@@ -86,7 +86,7 @@ func parseHeader(header []string) (colIndices, error) {
 	idx := colIndices{userID: -1, id: -1, date: -1, transaction: -1}
 	for i, h := range header {
 		switch strings.ToLower(strings.TrimSpace(h)) {
-		case colUserID:
+		case colUserID, "user_id":
 			idx.userID = i
 		case colID:
 			idx.id = i

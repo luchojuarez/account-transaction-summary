@@ -38,7 +38,8 @@ type monthAccum struct {
 }
 
 // NewUserSummaries computes per-user aggregate summaries across all transactions.
-func NewUserSummaries(txns []Transaction) []UserSummary {
+// currentBalance is added to each user's running balance before transactions are applied.
+func NewUserSummaries(txns []Transaction, currentBalance float64) []UserSummary {
 	if len(txns) == 0 {
 		return nil
 	}
@@ -51,7 +52,7 @@ func NewUserSummaries(txns []Transaction) []UserSummary {
 
 	summaries := make([]UserSummary, 0, len(byUser))
 	for userID, userTxns := range byUser {
-		us := computeUserSummary(userTxns)
+		us := computeUserSummary(userTxns, currentBalance)
 		us.UserID = userID
 		summaries = append(summaries, us)
 	}
@@ -64,9 +65,9 @@ func NewUserSummaries(txns []Transaction) []UserSummary {
 	return summaries
 }
 
-func computeUserSummary(txns []Transaction) UserSummary {
+func computeUserSummary(txns []Transaction, currentBalance float64) UserSummary {
 	monthly := make(map[monthKey]*monthAccum)
-	var totalBalance float64
+	totalBalance := currentBalance
 	var allCredits, allDebits []float64
 
 	for _, t := range txns {

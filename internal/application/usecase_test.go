@@ -36,18 +36,13 @@ func (f *fakeRepository) SaveUserSummary(s domain.UserSummary) error {
 	return f.summaryErr
 }
 
-type fakeNotifier struct {
-	calls []notifierCall
-	err   error
+type fakeSummaryNewsPublisher struct {
+	published []domain.UserSummary
+	err       error
 }
 
-type notifierCall struct {
-	email   string
-	summary domain.UserSummary
-}
-
-func (f *fakeNotifier) SendSummary(email, _ string, s domain.UserSummary) error {
-	f.calls = append(f.calls, notifierCall{email: email, summary: s})
+func (f *fakeSummaryNewsPublisher) PublishSummary(summary domain.UserSummary) error {
+	f.published = append(f.published, summary)
 	return f.err
 }
 
@@ -84,15 +79,15 @@ func TestProcessAccountUseCase_HappyPath(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name              string
-		txns              []domain.Transaction
-		wantNotifiedUsers int
-		wantUserBalances  map[int]float64
+		name               string
+		txns               []domain.Transaction
+		wantPublishedUsers int
+		wantUserBalances   map[int]float64
 	}{
 		{
-			name:              "two users — each gets their own notification",
-			txns:              twoUserTxns(),
-			wantNotifiedUsers: 2,
+			name:               "two users — each summary published to SQS",
+			txns:               twoUserTxns(),
+			wantPublishedUsers: 2,
 			wantUserBalances: map[int]float64{
 				1: 29.74, // 60.5 - 20.46 - 10.30
 				2: 210.0, // 10 + 200
@@ -104,14 +99,14 @@ func TestProcessAccountUseCase_HappyPath(t *testing.T) {
 				mustTxn(1, 7, "2021-01-01", +100.0),
 				mustTxn(2, 7, "2021-01-15", -30.0),
 			},
-			wantNotifiedUsers: 1,
-			wantUserBalances:  map[int]float64{7: 70.0},
+			wantPublishedUsers: 1,
+			wantUserBalances:   map[int]float64{7: 70.0},
 		},
 		{
-			name:              "empty file — no notifications sent",
-			txns:              []domain.Transaction{},
-			wantNotifiedUsers: 0,
-			wantUserBalances:  map[int]float64{},
+			name:               "empty file — no summaries published",
+			txns:               []domain.Transaction{},
+			wantPublishedUsers: 0,
+			wantUserBalances:   map[int]float64{},
 		},
 	}
 
@@ -122,28 +117,27 @@ func TestProcessAccountUseCase_HappyPath(t *testing.T) {
 
 			reader := &fakeReader{txns: tc.txns}
 			repo := &fakeRepository{}
-			notifier := &fakeNotifier{}
+			publisher := &fakeSummaryNewsPublisher{}
 
-			uc := application.NewProcessAccountUseCase(reader, repo, notifier, "test@example.com", "Test User")
+			uc := application.NewProcessAccountUseCase(reader, repo, publisher)
 			if err := uc.Process(); err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
 
-			if len(notifier.calls) != tc.wantNotifiedUsers {
-				t.Errorf("notifications sent: want %d, got %d",
-					tc.wantNotifiedUsers, len(notifier.calls))
+			if len(publisher.published) != tc.wantPublishedUsers {
+				t.Errorf("summaries published: want %d, got %d",
+					tc.wantPublishedUsers, len(publisher.published))
 			}
 
-			// Verify per-user balance in notifications
-			for _, call := range notifier.calls {
-				want, ok := tc.wantUserBalances[call.summary.UserID]
+			for _, s := range publisher.published {
+				want, ok := tc.wantUserBalances[s.UserID]
 				if !ok {
-					t.Errorf("unexpected notification for user %d", call.summary.UserID)
+					t.Errorf("unexpected published summary for user %d", s.UserID)
 					continue
 				}
-				if call.summary.TotalBalance != want {
+				if s.TotalBalance != want {
 					t.Errorf("user %d balance: want %.2f, got %.2f",
-						call.summary.UserID, want, call.summary.TotalBalance)
+						s.UserID, want, s.TotalBalance)
 				}
 			}
 		})
@@ -228,10 +222,10 @@ func TestProcessAccountUseCase_Errors(t *testing.T) {
 	}
 }
 */
-func TestProcessAccountUseCase_NotificationsUseSortedUserOrder(t *testing.T) {
+func TestProcessAccountUseCase_PublishOrderIsSortedByUserID(t *testing.T) {
 	t.Parallel()
 
-	// Users inserted in reverse order in the CSV — output should still be sorted
+	// Users inserted in reverse order — published summaries should still be sorted by user ID
 	txns := []domain.Transaction{
 		mustTxn(1, 1, "2021-01-01", +10),
 		mustTxn(2, 2, "2021-01-02", +20),
@@ -240,23 +234,22 @@ func TestProcessAccountUseCase_NotificationsUseSortedUserOrder(t *testing.T) {
 
 	reader := &fakeReader{txns: txns}
 	repo := &fakeRepository{}
-	notifier := &fakeNotifier{}
+	publisher := &fakeSummaryNewsPublisher{}
 
-	uc := application.NewProcessAccountUseCase(reader, repo, notifier, "test@example.com", "Test User")
+	uc := application.NewProcessAccountUseCase(reader, repo, publisher)
 	if err := uc.Process(); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if len(notifier.calls) != 3 {
-		t.Fatalf("want 3 calls, got %d", len(notifier.calls))
+	if len(publisher.published) != 3 {
+		t.Fatalf("want 3 published, got %d", len(publisher.published))
 	}
 
-	// Verify ascending ID order in notifications
-	for i := 1; i < len(notifier.calls); i++ {
-		prev := notifier.calls[i-1].summary.UserID
-		curr := notifier.calls[i].summary.UserID
+	for i := 1; i < len(publisher.published); i++ {
+		prev := publisher.published[i-1].UserID
+		curr := publisher.published[i].UserID
 		if curr <= prev {
-			t.Errorf("notifications not sorted: user %d before user %d", prev, curr)
+			t.Errorf("published order not sorted: user %d before user %d", prev, curr)
 		}
 	}
 }

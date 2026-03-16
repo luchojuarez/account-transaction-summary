@@ -1,10 +1,10 @@
 SHELL := /bin/bash
 
-.PHONY: test localstack-up lambda-build lambda-deploy-localstack lambda-invoke-localstack lambda-rebuild-and-deploy
+.PHONY: test localstack-up build-all warmup lambda-build lambda-deploy-localstack lambda-invoke-localstack lambda-rebuild-and-deploy sqs-build worker-build worker-up worker-build-and-restart
 
 LAMBDA_FUNCTION_NAME ?= account-transaction-summary
 LOCALSTACK_ENDPOINT ?= http://localhost:4566
-LAMBDA_INVOKE_PAYLOAD ?= {"file_path":"data/txns.csv","email":"lucho.juarez79@gmail.com"}
+LAMBDA_INVOKE_PAYLOAD ?= {"file_path":"data/txns.csv"}
 LAMBDA_INVOKE_TYPE ?= RequestResponse
 AWS_CLI_CONNECT_TIMEOUT ?= 60
 AWS_CLI_READ_TIMEOUT ?= 300
@@ -17,17 +17,43 @@ test:
 	go test ./...
 
 
+## Warm up entire system: LocalStack, SQS queue, Lambda deploy, worker build and run
+warmup: localstack-up
+	sleep 5 && $(MAKE) sqs-build
+	$(MAKE) lambda-deploy-localstack
+	$(MAKE) worker-build
+	$(MAKE) worker-up
+
 ## Start LocalStack with Lambda support
 localstack-up:
 	docker compose up -d localstack
 
-## Build the AWS Lambda binary for Linux and package it as a zip
+## Build the balance-news worker Docker image
+worker-build:
+	docker compose build worker
+
+## Rebuild the worker image and restart the worker container (SMTP_* from Makefile or env)
+worker-build-and-restart:
+	SMTP_HOST="$(SMTP_HOST)" SMTP_PORT="$(SMTP_PORT)" SMTP_USERNAME="$(SMTP_USERNAME)" SMTP_PASSWORD="$(SMTP_PASSWORD)" \
+	docker compose build worker && \
+	SMTP_HOST="$(SMTP_HOST)" SMTP_PORT="$(SMTP_PORT)" SMTP_USERNAME="$(SMTP_USERNAME)" SMTP_PASSWORD="$(SMTP_PASSWORD)" \
+	docker compose up -d --force-recreate worker
+
+## Create SQS queue in LocalStack (requires localstack-up and SQS in SERVICES)
+SQS_QUEUE_NAME ?= balanceNews
+sqs-build:
+	docker run --rm --network host \
+		-e AWS_ACCESS_KEY_ID=test \
+		-e AWS_SECRET_ACCESS_KEY=test \
+		-e AWS_DEFAULT_REGION=us-east-1 \
+		amazon/aws-cli sqs create-queue \
+			--endpoint-url=$(LOCALSTACK_ENDPOINT) \
+			--queue-name $(SQS_QUEUE_NAME)
+
+## Build the AWS Lambda binary for Linux and package it as a zip (Docker)
 lambda-build:
-	mkdir -p bin
-	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o bin/bootstrap ./cmd/lambda
-	rm -rf bin/data
-	cp -R data bin/data
-	cd bin && zip -q lambda.zip bootstrap && zip -qr lambda.zip data
+	docker run --rm -v "$(PWD):/app" -w /app -e CGO_ENABLED=0 -e GOOS=linux -e GOARCH=amd64 golang:1.25 sh -c "mkdir -p bin && go build -buildvcs=false -ldflags='-s -w' -o bin/bootstrap ./cmd/lambda"
+	docker run --rm -v "$(PWD):/app" -w /app alpine sh -c "apk add --no-cache zip > /dev/null && rm -rf /app/bin/data && cp -R /app/data /app/bin/data && cd /app/bin && zip -q lambda.zip bootstrap && zip -qr lambda.zip data"
 
 
 ## Deploy the Lambda to LocalStack using the official AWS CLI Docker image (no local aws/awslocal needed)
@@ -64,10 +90,10 @@ lambda-invoke-localstack:
 			--payload "$$(echo -n '$(LAMBDA_INVOKE_PAYLOAD)' | base64)" \
 			/work/lambda-output.json
 
-## Fully rebuild and redeploy the Lambda to LocalStack (clean artifacts, restart docker-compose, rebuild, deploy via Docker AWS CLI)
+## Fully rebuild and redeploy the Lambda to LocalStack (clean artifacts, restart docker-compose, rebuild, deploy via Docker)
 lambda-rebuild-and-deploy:
 	docker compose down
-	rm -rf bin/bootstrap bin/lambda.zip bin/data
+	docker run --rm -v "$(PWD):/work" -w /work alpine rm -rf bin/bootstrap bin/lambda.zip bin/data
 	docker compose up -d localstack
 	$(MAKE) lambda-deploy-localstack
 

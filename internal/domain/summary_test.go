@@ -108,7 +108,7 @@ func TestNewUserSummaries_Grouping(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			got := domain.NewUserSummaries(tc.txns)
+			got := domain.NewUserSummaries(tc.txns, 0)
 
 			if len(got) != tc.wantUserCount {
 				t.Fatalf("user count: want %d, got %d", tc.wantUserCount, len(got))
@@ -196,7 +196,7 @@ func TestNewUserSummaries_BalanceAndAverages(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			summaries := domain.NewUserSummaries(tc.txns)
+			summaries := domain.NewUserSummaries(tc.txns, 0)
 
 			if len(summaries) != len(tc.wantByUser) {
 				t.Fatalf("user count: want %d, got %d", len(tc.wantByUser), len(summaries))
@@ -284,7 +284,7 @@ func TestNewUserSummaries_MonthlyCounts(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			summaries := domain.NewUserSummaries(tc.txns)
+			summaries := domain.NewUserSummaries(tc.txns, 0)
 			s := findUser(t, summaries, tc.userID)
 
 			if len(s.Monthly) != tc.wantMonthCount {
@@ -379,7 +379,7 @@ func TestNewUserSummaries_MonthAvgCreditDebit(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			summaries := domain.NewUserSummaries(tc.txns)
+			summaries := domain.NewUserSummaries(tc.txns, 0)
 			s := findUser(t, summaries, tc.userID)
 
 			var ms *domain.MonthSummary

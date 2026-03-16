@@ -30,6 +30,7 @@ make lambda-invoke-localstack
 - `LAMBDA_FUNCTION_NAME` (default: `account-transaction-summary`)
 - `LOCALSTACK_ENDPOINT` (default: `http://localhost:4566`)
 - `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD` (used by the email adapter)
+- `SQS_QUEUE_NAME` (default: `balanceNews`) — queue used to publish summary news; optional `SQS_QUEUE_URL` overrides when using a full URL (e.g. LocalStack)
 
 ### Project Layout (high level)
 
@@ -144,6 +145,15 @@ When deploying to LocalStack via `make lambda-deploy-localstack`, the following 
 - `SMTP_PASSWORD`
 
 Set these variables when invoking `make` to point to your SMTP server (or a local mail catcher).
+
+### SQS Configuration
+
+The summary-news publisher sends each user summary to an SQS queue. Configuration is read from the environment:
+
+- **SQS_QUEUE_NAME**: Queue name (default: `balanceNews`). The publisher resolves the queue URL via the AWS API when only the name is set.
+- **SQS_QUEUE_URL**: Optional. When set, this full URL is used directly (useful for LocalStack, e.g. `http://localhost:4566/000000000000/balanceNews`).
+
+Use `sqs.FromEnv()` to load config and `sqs.NewPublisherFromConfig(awsCfg, config)` to build the publisher.
 
 ### Development Notes
 

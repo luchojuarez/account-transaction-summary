@@ -17,8 +17,23 @@ type TransactionRepository interface {
 	SaveUserSummary(summary domain.UserSummary) error
 }
 
+// UserRepository is a driven port for looking up user contact info by user ID.
+type UserRepository interface {
+	GetUser(userID int) (email, name string, err error)
+}
+
 // NotificationSender is a driven port for delivering a summary to one user.
 type NotificationSender interface {
 	SendSummary(toEmail, toName string, summary domain.UserSummary) error
+}
+
+// SummaryNewsPublisher is a driven port for publishing a single user summary to SQS.
+type SummaryNewsPublisher interface {
+	PublishSummary(summary domain.UserSummary) error
+}
+
+// BalanceNewsHandler is a driven port for handling one balance-news message (e.g. after consuming from SQS).
+type BalanceNewsHandler interface {
+	Handle(summary domain.UserSummary) error
 }
 

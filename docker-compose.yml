@@ -4,7 +4,7 @@ services:
     image: localstack/localstack:latest
     container_name: localstack
     environment:
-      - SERVICES=lambda
+      - SERVICES=lambda,sqs
       - DEBUG=1
       # Ensure we use the modern Lambda v2 provider (see docs)
       - LAMBDA_KEEPALIVE_MS=60000
@@ -14,4 +14,23 @@ services:
     volumes:
       - "./.localstack:/var/lib/localstack"
       - "/var/run/docker.sock:/var/run/docker.sock"
+    restart: unless-stopped
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    container_name: balance-news-worker
+    environment:
+      - AWS_ACCESS_KEY_ID=test
+      - AWS_SECRET_ACCESS_KEY=test
+      - AWS_DEFAULT_REGION=us-east-1
+      - AWS_ENDPOINT_URL=http://localstack:4566
+      - SQS_QUEUE_URL=http://localstack:4566/000000000000/balanceNews
+      - SMTP_HOST=${SMTP_HOST}
+      - SMTP_PORT=${SMTP_PORT}
+      - SMTP_USERNAME=${SMTP_USERNAME}
+      - SMTP_PASSWORD=${SMTP_PASSWORD}
+    depends_on:
+      - localstack
     restart: unless-stopped

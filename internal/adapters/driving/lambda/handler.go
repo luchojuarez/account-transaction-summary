@@ -5,15 +5,15 @@ import (
 	"log"
 
 	"github.com/aws/aws-lambda-go/lambda"
+	"github.com/aws/aws-sdk-go-v2/config"
 
+	"github.com/luchojuarez/account-transaction-summary/internal/adapters/driven/sqs"
 	"github.com/luchojuarez/account-transaction-summary/internal/adapters/driving/cli"
 )
 
 // Request represents the expected JSON payload from the Lambda invocation.
 type Request struct {
 	FilePath string `json:"file_path"`
-	Email    string `json:"email"`
-	Name     string `json:"name"`
 }
 
 // Handler is the AWS Lambda entrypoint. It delegates to the same composition
@@ -22,10 +22,20 @@ type Request struct {
 //
 // The handler reads the incoming event payload and runs the
 // account-processing pipeline once per invocation.
-func Handler(_ context.Context, req Request) (string, error) {
-	log.Printf("[Lambda] Invoked account-transaction-summary handler with file_path: %q, email: %q, name: %q", req.FilePath, req.Email, req.Name)
+func Handler(ctx context.Context, req Request) (string, error) {
+	log.Printf("[Lambda] Invoked account-transaction-summary handler with file_path: %q", req.FilePath)
 
-	processor, err := cli.NewAccountProcessor(req.FilePath, req.Email, req.Name)
+	awsCfg, err := config.LoadDefaultConfig(ctx)
+	if err != nil {
+		log.Printf("[Lambda] Failed to load AWS config: %v", err)
+		return "", err
+	}
+	sqsPublisher, err := sqs.NewPublisherFromConfig(awsCfg, sqs.FromEnv())
+	if err != nil {
+		log.Printf("[Lambda] Failed to create SQS publisher: %v", err)
+		return "", err
+	}
+	processor, err := cli.NewAccountProcessor(req.FilePath, sqsPublisher)
 	if err != nil {
 		log.Printf("[Lambda] Failed to initialise processor: %v", err)
 		return "", err

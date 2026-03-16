@@ -11,64 +11,49 @@ import (
 )
 
 // ProcessAccountUseCase implements the primary use-case:
-// read transactions → group by user → compute summaries → persist → notify each user.
+// read transactions → save transactions → compute summaries by user → publish to SQS.
 type ProcessAccountUseCase struct {
-	reader   ports.TransactionReader
-	repo     ports.TransactionRepository
-	notifier ports.NotificationSender
-	email    string
-	name     string
+	reader               ports.TransactionReader
+	repo                 ports.TransactionRepository
+	summaryNewsPublisher ports.SummaryNewsPublisher
 }
 
 // NewProcessAccountUseCase constructs the use-case with its required driven ports.
 func NewProcessAccountUseCase(
 	reader ports.TransactionReader,
 	repo ports.TransactionRepository,
-	notifier ports.NotificationSender,
-	email string,
-	name string,
+	summaryNewsPublisher ports.SummaryNewsPublisher,
 ) *ProcessAccountUseCase {
 	return &ProcessAccountUseCase{
-		reader:   reader,
-		repo:     repo,
-		notifier: notifier,
-		email:    email,
-		name:     name,
+		reader:               reader,
+		repo:                 repo,
+		summaryNewsPublisher: summaryNewsPublisher,
 	}
 }
 
-// Process reads all transactions, groups them by user, and sends each user their summary.
+// Process reads transactions, saves them, computes summaries by user, and publishes to SQS.
 func (uc *ProcessAccountUseCase) Process() error {
-	// 1. Read all transactions from the source
+	// 1. Read transactions
 	txns, err := uc.reader.ReadTransactions()
 	if err != nil {
 		return fmt.Errorf("reading transactions: %w", err)
 	}
 	log.Printf("[UseCase] Loaded %d transactions across all users", len(txns))
 
-	// 2. Persist raw transactions (non-fatal)
+	// 2. Save transactions (non-fatal)
 	if err := uc.repo.SaveTransactions(txns); err != nil {
 		log.Printf("[UseCase] Warning — could not save transactions: %v", err)
 	}
 
-	// 3. Pure domain computation: group by user and compute each summary
-	summaries := domain.NewUserSummaries(txns)
+	// 3. Calculate summaries by user
+	summaries := domain.NewUserSummaries(txns, 0.0)
 	log.Printf("[UseCase] Computed summaries for %d user(s)", len(summaries))
 
-	// 4. For each user: persist summary + send notification
-	var errs []error
+	// 4. Publish each summary to SQS
 	for _, summary := range summaries {
-		if err := uc.repo.SaveUserSummary(summary); err != nil {
-			log.Printf("[UseCase] Warning — could not save summary for user %d: %v", summary.UserID, err)
+		if err := uc.summaryNewsPublisher.PublishSummary(summary); err != nil {
+			return fmt.Errorf("publish summary for user %d to SQS: %w", summary.UserID, err)
 		}
-
-		if err := uc.notifier.SendSummary(uc.email, uc.name, summary); err != nil {
-			errs = append(errs, fmt.Errorf("notify user %d: %w", summary.UserID, err))
-		}
-	}
-
-	if len(errs) > 0 {
-		return fmt.Errorf("notification errors: %v", errs)
 	}
 	return nil
 }
