@@ -18,36 +18,28 @@ import (
 // NewAccountProcessor composes the concrete adapters and returns an
 // AccountProcessor that can be used by any driving adapter (CLI, Lambda, etc).
 //
-// csvPath can be:
-//   - a local file path  (e.g. "data/txns.csv")
-//   - an S3 URI          (e.g. "s3://my-bucket/path/txns.csv")
+// csvPath must be an S3 URI (e.g. "s3://my-bucket/path/txns.csv")
 func NewAccountProcessor(csvPath, userEmail, defaultName string) (ports.AccountProcessor, error) {
 	log.Printf("[CLI Adapter] Initialising account processor with CSV: %s, Email: %s, DefaultName: %s", csvPath, userEmail, defaultName)
 
-	if csvPath == "" {
-		csvPath = "./data/txns.csv"
-		log.Printf("[CLI Adapter] CSV_PATH not set, defaulting to %q", csvPath)
-	}
-
 	var reader ports.TransactionReader
 
-	if strings.HasPrefix(csvPath, "s3://") {
-		bucket, key, err := parseS3URI(csvPath)
-		if err != nil {
-			return nil, fmt.Errorf("invalid S3 URI %q: %w", csvPath, err)
-		}
-		endpoint := os.Getenv("AWS_ENDPOINT_URL") // empty in real AWS; set for LocalStack
-		log.Printf("[CLI Adapter] Using S3Reader — bucket=%s key=%s endpoint=%q", bucket, key, endpoint)
-
-		r, err := csvadapter.NewS3Reader(context.Background(), bucket, key, endpoint)
-		if err != nil {
-			return nil, fmt.Errorf("create S3 reader: %w", err)
-		}
-		reader = r
-	} else {
-		log.Printf("[CLI Adapter] Using FileReader — path=%q", csvPath)
-		reader = csvadapter.NewFileReader(csvPath)
+	if !strings.HasPrefix(csvPath, "s3://") {
+		return nil, fmt.Errorf("csvPath must be an S3 URI starting with 's3://', got: %q", csvPath)
 	}
+
+	bucket, key, err := parseS3URI(csvPath)
+	if err != nil {
+		return nil, fmt.Errorf("invalid S3 URI %q: %w", csvPath, err)
+	}
+	endpoint := os.Getenv("AWS_ENDPOINT_URL") // empty in real AWS; set for LocalStack
+	log.Printf("[CLI Adapter] Using S3Reader — bucket=%s key=%s endpoint=%q", bucket, key, endpoint)
+
+	r, err := csvadapter.NewS3Reader(context.Background(), bucket, key, endpoint)
+	if err != nil {
+		return nil, fmt.Errorf("create S3 reader: %w", err)
+	}
+	reader = r
 
 	repo := repository.NewNoopRepository()
 

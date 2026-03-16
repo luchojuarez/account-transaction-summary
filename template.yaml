@@ -1,0 +1,41 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: Stack para procesar transacciones bancarias y enviar resumen por SMTP.
+
+Parameters:
+  SmtpHost:
+    Type: String
+    Default: "smtp.gmail.com"
+  SmtpPort:
+    Type: String
+    Default: "587"
+  SmtpUser:
+    Type: String
+    Description: "GMAIL USER"
+  SmtpPass:
+    Type: String
+    NoEcho: true # Oculta la contraseña en la consola de AWS
+    Description: "GMAIL APP PASSWORD"
+
+Resources:
+  TransactionFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: .
+      Handler: bootstrap # AWS buscará un archivo llamado bootstrap
+      Runtime: provided.al2023
+      Architectures:
+        - arm64 # Más económico y rápido
+      MemorySize: 128
+      Timeout: 30
+      Policies:
+        # Esta política predefinida de SAM da permiso de lectura al bucket
+        - S3ReadPolicy:
+            BucketName: "account-txns"
+      Environment:
+        Variables:
+          # Aquí mapeamos los parámetros a tus variables de Go
+          SMTP_HOST: !Ref SmtpHost
+          SMTP_PORT: !Ref SmtpPort
+          SMTP_USERNAME: !Ref SmtpUser
+          SMTP_PASSWORD: !Ref SmtpPass

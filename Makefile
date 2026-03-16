@@ -47,7 +47,7 @@ localstack-wait:
 ## Build the AWS Lambda binary for Linux and package it as a zip
 lambda-build:
 	mkdir -p bin
-	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o bin/bootstrap ./cmd/lambda
+	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags="-s -w" -o bin/bootstrap ./cmd/lambda
 	rm -rf bin/data
 	cp -R data bin/data
 	cd bin && zip -q lambda.zip bootstrap && zip -qr lambda.zip data
