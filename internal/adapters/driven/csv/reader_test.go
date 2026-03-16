@@ -11,7 +11,13 @@ import (
 
 func writeTempCSV(t *testing.T, content string) string {
 	t.Helper()
-	f, err := os.CreateTemp(t.TempDir(), "txns-*.csv")
+	dir := t.TempDir()
+	// Create a 'folder' subdirectory to match the test cases
+	subDir := dir + "/folder"
+	if err := os.MkdirAll(subDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	f, err := os.CreateTemp(subDir, "txns-*.csv")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -94,7 +100,7 @@ func TestCSVFileReader_ValidFiles(t *testing.T) {
 			t.Parallel()
 
 			path := writeTempCSV(t, tc.content)
-			txns, err := csvadapter.NewFileReader(path).ReadTransactions()
+			txns, err := csvadapter.NewFileReader("folder").ReadTransactions(path)
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
@@ -151,7 +157,7 @@ func TestCSVFileReader_Errors(t *testing.T) {
 			t.Parallel()
 
 			path := writeTempCSV(t, tc.content)
-			_, err := csvadapter.NewFileReader(path).ReadTransactions()
+			_, err := csvadapter.NewFileReader("").ReadTransactions(path)
 			if err == nil {
 				t.Error("expected error, got nil")
 			}
@@ -160,7 +166,7 @@ func TestCSVFileReader_Errors(t *testing.T) {
 }
 
 func TestCSVFileReader_FileNotFound(t *testing.T) {
-	_, err := csvadapter.NewFileReader("/nonexistent/path/txns.csv").ReadTransactions()
+	_, err := csvadapter.NewFileReader("").ReadTransactions("/nonexistent/path/txns.csv")
 	if err == nil {
 		t.Error("expected error for missing file, got nil")
 	}

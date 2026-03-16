@@ -8,7 +8,7 @@ import "github.com/luchojuarez/account-transaction-summary/internal/domain"
 
 // TransactionReader is a driven port for loading transactions from any source.
 type TransactionReader interface {
-	ReadTransactions() ([]domain.Transaction, error)
+	ReadTransactions(key string) ([]domain.Transaction, error)
 }
 
 // TransactionRepository is a driven port for persisting account data.
@@ -21,4 +21,3 @@ type TransactionRepository interface {
 type NotificationSender interface {
 	SendSummary(toEmail, toName string, summary domain.UserSummary) error
 }
-

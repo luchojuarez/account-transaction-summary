@@ -4,7 +4,7 @@ services:
     image: localstack/localstack:latest
     container_name: localstack
     environment:
-      - SERVICES=lambda
+      - SERVICES=lambda,s3
       - DEBUG=1
       # Ensure we use the modern Lambda v2 provider (see docs)
       - LAMBDA_KEEPALIVE_MS=60000

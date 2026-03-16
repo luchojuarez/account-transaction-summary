@@ -38,9 +38,9 @@ func NewProcessAccountUseCase(
 }
 
 // Process reads all transactions, groups them by user, and sends each user their summary.
-func (uc *ProcessAccountUseCase) Process() error {
+func (uc *ProcessAccountUseCase) Process(key string) error {
 	// 1. Read all transactions from the source
-	txns, err := uc.reader.ReadTransactions()
+	txns, err := uc.reader.ReadTransactions(key)
 	if err != nil {
 		return fmt.Errorf("reading transactions: %w", err)
 	}

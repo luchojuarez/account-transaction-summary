@@ -15,8 +15,8 @@ import (
 // Expected CSV header columns (case-insensitive, spaces stripped).
 // Supported formats:
 //
-//	1) id,date,transaction
-//	2) userID,id,date,transaction
+//  1. id,date,transaction
+//  2. userID,id,date,transaction
 const (
 	colUserID      = "userid"
 	colID          = "id"
@@ -37,12 +37,17 @@ func NewFileReader(path string) *FileReader {
 // ReadTransactions satisfies ports.TransactionReader.
 // It supports both legacy and new CSV formats:
 //
-//	1) id,date,transaction
-//	2) userID,id,date,transaction
-func (r *FileReader) ReadTransactions() ([]domain.Transaction, error) {
-	f, err := os.Open(r.path)
+//  1. id,date,transaction
+//  2. userID,id,date,transaction
+func (r *FileReader) ReadTransactions(path string) ([]domain.Transaction, error) {
+	fullPath := path
+	if r.path != "" && !strings.HasPrefix(path, "/") {
+		fullPath = r.path + "/" + path
+	}
+
+	f, err := os.Open(fullPath)
 	if err != nil {
-		return nil, fmt.Errorf("open %q: %w", r.path, err)
+		return nil, fmt.Errorf("open %q: %w", fullPath, err)
 	}
 	defer f.Close()
 
@@ -51,16 +56,23 @@ func (r *FileReader) ReadTransactions() ([]domain.Transaction, error) {
 
 	records, err := cr.ReadAll()
 	if err != nil {
-		return nil, fmt.Errorf("parse csv %q: %w", r.path, err)
+		return nil, fmt.Errorf("parse csv %q: %w", fullPath, err)
 	}
+
+	return parseRecords(records)
+}
+
+// parseRecords converts raw CSV records (header + data rows) into domain
+// transactions. It is shared by FileReader and S3Reader.
+func parseRecords(records [][]string) ([]domain.Transaction, error) {
 	if len(records) < 2 {
-		return nil, fmt.Errorf("csv %q: no data rows found", r.path)
+		return nil, fmt.Errorf("csv: no data rows found")
 	}
 
 	// Parse header to find column indices — tolerant of ordering and spacing.
 	colIdx, err := parseHeader(records[0])
 	if err != nil {
-		return nil, fmt.Errorf("csv %q header: %w", r.path, err)
+		return nil, fmt.Errorf("csv header: %w", err)
 	}
 
 	txns := make([]domain.Transaction, 0, len(records)-1)

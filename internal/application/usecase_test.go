@@ -15,7 +15,7 @@ type fakeReader struct {
 	err  error
 }
 
-func (f *fakeReader) ReadTransactions() ([]domain.Transaction, error) {
+func (f *fakeReader) ReadTransactions(key string) ([]domain.Transaction, error) {
 	return f.txns, f.err
 }
 
@@ -51,8 +51,6 @@ func (f *fakeNotifier) SendSummary(email, _ string, s domain.UserSummary) error 
 	return f.err
 }
 
-
-
 // ── helpers ───────────────────────────────────────────────────────────────────
 
 func mustTxn(id, userID int, dateStr string, amount float64) domain.Transaction {
@@ -75,8 +73,6 @@ func twoUserTxns() []domain.Transaction {
 		mustTxn(5, 2, "2021-08-15", +200.0),
 	}
 }
-
-
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
@@ -125,7 +121,7 @@ func TestProcessAccountUseCase_HappyPath(t *testing.T) {
 			notifier := &fakeNotifier{}
 
 			uc := application.NewProcessAccountUseCase(reader, repo, notifier, "test@example.com", "Test User")
-			if err := uc.Process(); err != nil {
+			if err := uc.Process("test"); err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
 
@@ -151,82 +147,82 @@ func TestProcessAccountUseCase_HappyPath(t *testing.T) {
 }
 
 /*
-func TestProcessAccountUseCase_Errors(t *testing.T) {
-	t.Parallel()
+	func TestProcessAccountUseCase_Errors(t *testing.T) {
+		t.Parallel()
 
-	tests := []struct {
-		name           string
-		readerErr      error
-		repoTxnErr     error
-		repoSummaryErr error
-		notifierErr    error
-		resolverErr    error
-		wantErr        bool
-		wantNotified   int // how many notifications still went through
-	}{
-		{
-			name:      "reader error is fatal — stops the pipeline",
-			readerErr: errors.New("file not found"),
-			wantErr:   true,
-		},
-		{
-			name:         "repo SaveTransactions error is non-fatal",
-			repoTxnErr:   errors.New("db unavailable"),
-			wantErr:      false,
-			wantNotified: 2, // both users still notified
-		},
-		{
-			name:           "repo SaveUserSummary error is non-fatal",
-			repoSummaryErr: errors.New("db write failed"),
-			wantErr:        false,
-			wantNotified:   2,
-		},
-		{
-			name:         "notifier error is per-user non-fatal — other users still processed",
-			notifierErr:  errors.New("smtp refused"),
-			wantErr:      false, // Process() itself doesn't return error; it logs per-user
-			wantNotified: 2,     // SendSummary is called for each user (fake always records the call)
-		},
-		{
-			name:         "resolver error is per-user non-fatal",
-			resolverErr:  errors.New("user not found"),
-			wantErr:      false,
-			wantNotified: 0, // resolver fails before notifier is called
-		},
+		tests := []struct {
+			name           string
+			readerErr      error
+			repoTxnErr     error
+			repoSummaryErr error
+			notifierErr    error
+			resolverErr    error
+			wantErr        bool
+			wantNotified   int // how many notifications still went through
+		}{
+			{
+				name:      "reader error is fatal — stops the pipeline",
+				readerErr: errors.New("file not found"),
+				wantErr:   true,
+			},
+			{
+				name:         "repo SaveTransactions error is non-fatal",
+				repoTxnErr:   errors.New("db unavailable"),
+				wantErr:      false,
+				wantNotified: 2, // both users still notified
+			},
+			{
+				name:           "repo SaveUserSummary error is non-fatal",
+				repoSummaryErr: errors.New("db write failed"),
+				wantErr:        false,
+				wantNotified:   2,
+			},
+			{
+				name:         "notifier error is per-user non-fatal — other users still processed",
+				notifierErr:  errors.New("smtp refused"),
+				wantErr:      false, // Process() itself doesn't return error; it logs per-user
+				wantNotified: 2,     // SendSummary is called for each user (fake always records the call)
+			},
+			{
+				name:         "resolver error is per-user non-fatal",
+				resolverErr:  errors.New("user not found"),
+				wantErr:      false,
+				wantNotified: 0, // resolver fails before notifier is called
+			},
+		}
+
+		for _, tc := range tests {
+			t.Run(tc.name, func(t *testing.T) {
+				t.Parallel()
+
+				txns := twoUserTxns()
+				if tc.readerErr != nil {
+					txns = nil
+				}
+
+				reader := &fakeReader{txns: txns, err: tc.readerErr}
+				repo := &fakeRepository{txnErr: tc.repoTxnErr, summaryErr: tc.repoSummaryErr}
+				notifier := &fakeNotifier{err: tc.notifierErr}
+				resolver := twoUserResolver()
+				if tc.resolverErr != nil {
+					resolver = &fakeResolver{err: tc.resolverErr}
+				}
+
+				uc := application.NewProcessAccountUseCase(reader, repo, notifier, resolver)
+				err := uc.Process()
+
+				if tc.wantErr && err == nil {
+					t.Errorf("expected error, got nil")
+				}
+				if !tc.wantErr && err != nil {
+					t.Errorf("unexpected error: %v", err)
+				}
+				if len(notifier.calls) != tc.wantNotified {
+					t.Errorf("notifications sent: want %d, got %d", tc.wantNotified, len(notifier.calls))
+				}
+			})
+		}
 	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-
-			txns := twoUserTxns()
-			if tc.readerErr != nil {
-				txns = nil
-			}
-
-			reader := &fakeReader{txns: txns, err: tc.readerErr}
-			repo := &fakeRepository{txnErr: tc.repoTxnErr, summaryErr: tc.repoSummaryErr}
-			notifier := &fakeNotifier{err: tc.notifierErr}
-			resolver := twoUserResolver()
-			if tc.resolverErr != nil {
-				resolver = &fakeResolver{err: tc.resolverErr}
-			}
-
-			uc := application.NewProcessAccountUseCase(reader, repo, notifier, resolver)
-			err := uc.Process()
-
-			if tc.wantErr && err == nil {
-				t.Errorf("expected error, got nil")
-			}
-			if !tc.wantErr && err != nil {
-				t.Errorf("unexpected error: %v", err)
-			}
-			if len(notifier.calls) != tc.wantNotified {
-				t.Errorf("notifications sent: want %d, got %d", tc.wantNotified, len(notifier.calls))
-			}
-		})
-	}
-}
 */
 func TestProcessAccountUseCase_NotificationsUseSortedUserOrder(t *testing.T) {
 	t.Parallel()
@@ -243,7 +239,7 @@ func TestProcessAccountUseCase_NotificationsUseSortedUserOrder(t *testing.T) {
 	notifier := &fakeNotifier{}
 
 	uc := application.NewProcessAccountUseCase(reader, repo, notifier, "test@example.com", "Test User")
-	if err := uc.Process(); err != nil {
+	if err := uc.Process("test"); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 

@@ -31,7 +31,7 @@ func Handler(_ context.Context, req Request) (string, error) {
 		return "", err
 	}
 
-	if err := processor.Process(); err != nil {
+	if err := processor.Process(req.FilePath); err != nil {
 		log.Printf("[Lambda] Processing failed: %v", err)
 		return "", err
 	}
@@ -45,4 +45,3 @@ func Handler(_ context.Context, req Request) (string, error) {
 func Start() {
 	lambda.Start(Handler)
 }
-

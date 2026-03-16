@@ -7,6 +7,5 @@ package ports
 type AccountProcessor interface {
 	// Process runs the full account processing pipeline once and returns an
 	// error if the operation fails.
-	Process() error
+	Process(key string) error
 }
-
